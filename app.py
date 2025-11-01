@@ -11,29 +11,18 @@ load_dotenv()
 
 # Load API keys from environment variables
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-TRELLO_API_KEY = os.getenv("TRELLO_API_KEY", "")
-TRELLO_API_TOKEN = os.getenv("TRELLO_API_TOKEN", "")
 
 if not GEMINI_API_KEY:
     print("Error: GEMINI_API_KEY is not set.")
     sys.exit(1)
-elif not TRELLO_API_KEY:
-    print("Error: TRELLO_API_KEY is not set.")
-    sys.exit(1)
-elif not TRELLO_API_TOKEN:
-    print("Error: TRELLO_API_TOKEN is not set.")
-    sys.exit(1)
-
 
 # --- 1. Trello API Functions ---
 
 
 TRELLO_API_URL = "https://api.trello.com/1/"
-trello_auth = {'key': TRELLO_API_KEY, 'token': TRELLO_API_TOKEN}
-board_name = "Poker Backend"
 
 
-def create_board():
+def create_board(board_name, trello_auth):
     print(f"Creating Trello board: {board_name}...")
     url = f"{TRELLO_API_URL}boards/"
     params = {'name': board_name, 'defaultLists': 'false', **trello_auth}
@@ -43,7 +32,7 @@ def create_board():
     return response.json()['id']
 
 
-def create_list(board_id, list_name):
+def create_list(board_id, list_name, trello_auth):
     print(f"  Creating list: {list_name}...")
     url = f"{TRELLO_API_URL}lists/"
     params = {'name': list_name, 'idBoard': board_id, **trello_auth}
@@ -52,7 +41,7 @@ def create_list(board_id, list_name):
     return response.json()['id']
 
 
-def create_card(list_id, card_name, card_desc):
+def create_card(list_id, card_name, card_desc, trello_auth):
     print(f"    Creating card: {card_name}...")
     url = f"{TRELLO_API_URL}cards/"
     params = {'name': card_name, 'desc': card_desc,
@@ -186,11 +175,16 @@ def get_trello_json_from_gemini(code_tree, code_contents):
         f"  Response tokens: {response.usage_metadata.candidates_token_count}")
     print(f"  Total tokens: {response.usage_metadata.total_token_count}")
 
+
+
 # --- 4. Main Execution ---
 
 
-def main():
-    if not all([GEMINI_API_KEY, TRELLO_API_KEY, TRELLO_API_TOKEN]):
+def main(trello_api_key, trello_token):
+    trello_auth = {'key': trello_api_key, 'token': trello_token}
+    board_name = "Example Board"
+
+    if not GEMINI_API_KEY:
         print("Error: Please set all API keys in your .env file.")
         sys.exit(1)
 
@@ -211,28 +205,31 @@ def main():
         with open("trello_board_cache.txt", "r") as f:
             cached_board_id = f.read().strip()
         print(f"Using cached Trello board ID: {cached_board_id}")
+
         board_id = cached_board_id
     else:
         # Step 3: Build the Trello Board
         print("\n--- Building Trello Board ---")
-        board_id = create_board()
+        board_id = create_board(board_name, trello_auth)
         # Cache the board ID
         with open("trello_board_cache.txt", "w") as f:
             f.write(board_id)
 
-    
     for trello_list in trello_data.get('lists', []):
         list_name = trello_list.get('name', 'Unnamed List')
-        list_id = create_list(board_id, list_name)
+        list_id = create_list(board_id, list_name, trello_auth)
 
         for card in trello_list.get('cards', []):
             card_name = card.get('name', 'Unnamed Card')
             card_desc = card.get('description', 'No description.')
-            create_card(list_id, card_name, card_desc)
+            create_card(list_id, card_name, card_desc, trello_auth)
 
     print("\n--- DEMO COMPLETE! ---")
     print("Your Trello board is ready. Go check it out!")
 
 
 if __name__ == "__main__":
-    main()
+    TRELLO_API_KEY = os.getenv("TRELLO_API_KEY", "")
+    TRELLO_API_TOKEN = os.getenv("TRELLO_API_TOKEN", "")
+
+    main(TRELLO_API_KEY, TRELLO_API_TOKEN)
