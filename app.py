@@ -203,9 +203,24 @@ def main():
     # Step 2: Get Trello structure from Gemini
     trello_data = get_trello_json_from_gemini(tree, contents)
 
-    # Step 3: Build the Trello Board
-    print("\n--- Building Trello Board ---")
-    board_id = create_board()
+    # Check if cache file exists
+    # If it does, GET that board ID instead of creating a new one (obviously with error checking)
+    # If it doen't, proceed to create a new board and save the ID to cache
+
+    if os.path.exists("trello_board_cache.txt"):
+        with open("trello_board_cache.txt", "r") as f:
+            cached_board_id = f.read().strip()
+        print(f"Using cached Trello board ID: {cached_board_id}")
+        board_id = cached_board_id
+    else:
+        # Step 3: Build the Trello Board
+        print("\n--- Building Trello Board ---")
+        board_id = create_board()
+        # Cache the board ID
+        with open("trello_board_cache.txt", "w") as f:
+            f.write(board_id)
+
+    
     for trello_list in trello_data.get('lists', []):
         list_name = trello_list.get('name', 'Unnamed List')
         list_id = create_list(board_id, list_name)
