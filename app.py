@@ -22,6 +22,24 @@ if not GEMINI_API_KEY:
 
 TRELLO_API_URL = "https://api.trello.com/1/"
 
+def update_board_github(github_url):
+    board_name = github_url.split('/')[-1]
+    if board_name.endswith('.git'):
+        board_name = board_name[:-4]
+    
+    status.write("Cloning the repository")
+    # unique repo id
+    urid = str(uuid.uuid4())
+    repo_destination = os.path.join("github_repos", urid)
+    subprocess.run(["mkdir", "-p", repo_destination])
+    subprocess.run(["git", "clone", github_url, repo_destination])
+    tree, contents = scan_codebase(repo_destination)
+    if repo_destination.startswith("github_repos"):
+        subprocess.run(["rm", "-rf", repo_destination])
+    
+
+
+
 def update_board(board_id, code_tree, code_contents, trello_auth, status):
     print("update branch")
     url = f"{TRELLO_API_URL}boards/{board_id}/lists"
