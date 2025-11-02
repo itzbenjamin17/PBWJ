@@ -38,10 +38,13 @@ def update_board(board_id, code_tree, code_contents, trello_auth, status):
         cards.raise_for_status()
         for card in cards.json():
             data[card['id']] = card['desc']
-    for id in lists_ids:
+            url = f"{TRELLO_API_URL}cards/{card['id']}"
+            response = requests.delete(url, params={**trello_auth})
+            response.raise_for_status()
         url = f"{TRELLO_API_URL}lists/{id}/closed"
-        archive = requests.put(url, params={**trello_auth})
-        archive.raise_for_status()
+        response = requests.put(url, params={**trello_auth, 'value': 'true'})
+        response.raise_for_status()
+
     status.write("Asking Gemini to update the Trello board...")
     if not GEMINI_API_KEY or GEMINI_API_KEY.startswith("PASTE_"):
         print("Error: GEMINI_API_KEY is not set or still contains placeholder.")
@@ -308,7 +311,8 @@ def main(trello_api_key, trello_token, status, github_url=None):
     boards.raise_for_status()
     board_exists = False
     for board in boards.json():
-        if board['name'] == board_name:
+        if board['name'] == board_name and not board['closed']:
+            print(board['name'], board_name, board['id'])
             cached_board_id = board['id']
             board_exists = True
             break
@@ -319,23 +323,20 @@ def main(trello_api_key, trello_token, status, github_url=None):
             url = f"{TRELLO_API_URL}boards/{board_id}"
             response = requests.get(url, params={**trello_auth})
             response.raise_for_status()
-            if response.json()['name'] != board_name:
-                board_exists = False
             if board_exists:
-                trello_data = update_board(
-                    board_id, tree, contents, trello_auth, status)
+                trello_data = update_board(board_id, tree, contents, trello_auth, status)
 
-            for trello_list in trello_data.get('lists', []):
-                list_name = trello_list.get('name', 'Unnamed List')
-                list_id = create_list(board_id, list_name, trello_auth, status)
-                for card in trello_list.get('cards', []):
-                    card_name = card.get('name', 'Unnamed Card')
-                    card_desc = card.get('description', 'No description.')
-                    create_card(list_id, card_name, card_desc,
-                                trello_auth, status)
+                for trello_list in trello_data.get('lists', []):
+                    list_name = trello_list.get('name', 'Unnamed List')
+                    list_id = create_list(board_id, list_name, trello_auth, status)
+                    for card in trello_list.get('cards', []):
+                        card_name = card.get('name', 'Unnamed Card')
+                        card_desc = card.get('description', 'No description.')
+                        create_card(list_id, card_name, card_desc,
+                                    trello_auth, status)
             status.update(label="Trello has been updated")
         except:
-            board_exists = False
+            status.write(f"Error updating existing board with board id: {board_id}, creating a new one instead.")
 
     if not board_exists:
         trello_data = get_trello_json_from_gemini(tree, contents, status)
