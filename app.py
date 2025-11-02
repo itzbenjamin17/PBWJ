@@ -45,10 +45,10 @@ def update_board(board_id, code_tree, code_contents, trello_auth, status):
     client = Client(api_key=GEMINI_API_KEY)
     prompt = f"""
     You are an intelligent code analysis assistant that helps developers manage their projects by analyzing codebases and generating actionable Trello cards. Your job is to
-    analyze a codebase, update the development roadmap using the provided codebase (excluding trello_script.py) and automatically generate structured Trello card recommendations.
+    analyze a codebase, update the development roadmap using the provided codebase (excluding this file) and automatically generate structured Trello card recommendations.
     
     Based on the file tree and file contents below, generate a JSON object
-    for a Trello board. If the description of a card roughly matches the description of an existing card in the board, update if need be or skip it. Delete any cards that have been resolved in the codebase. Otherwise, add new cards as needed.
+    for a Trello board. If the description of a generated card roughly matches the description of an existing card in the board, update it if need be or rewrite the generated card as the existing matching card. Do not include any generated cards that have been resolved in the codebase. Otherwise, add new cards as needed.
 
 
     The JSON must follow this exact schema:
@@ -141,7 +141,7 @@ def create_card(list_id, card_name, card_desc, trello_auth, status):
 # --- 2. Code Scanning Function ---
 
 
-def scan_codebase(root_dir=".", max_file_size=10000):
+def scan_codebase(root_dir="~/Desktop/completed projects/buggyGOL", max_file_size=10000):
     """Scans the codebase and returns a string with the file tree and key file contents."""
     file_tree = []
     file_contents = []
@@ -282,32 +282,39 @@ def main(trello_api_key, trello_token, status):
     print("Scanning local directory...")
     tree, contents = scan_codebase()
 
-    # Check if cache file exists
-    # If it does, GET that board ID instead of creating a new one (obviously with error checking)
-    # If it doen't, proceed to create a new board and save the ID to cache
-    cached_board_id = None
-    if os.path.exists("trello_board_cache.txt"):
-        with open("trello_board_cache.txt", "r") as f:
-            cached_board_id = f.read().strip()
+    
+    url = f"{TRELLO_API_URL}members/me"
+    user_id = requests.get(url, params={**trello_auth}).json()['id']
+    url = f"{TRELLO_API_URL}members/{user_id}/boards"
+    board_lists = requests.get(url, params={**trello_auth})
+    board_lists.raise_for_status()
 
-    board_exists = True
-    if cached_board_id and board_exists:
+    board_exists = False
+    for board in board_lists.json():
+        if board['name'] == board_name:
+            cached_board_id = board['id']
+            board_exists = True
+            break
+
+    if board_exists:
         status.write(f"Using cached Trello board ID: {cached_board_id}")
         board_id = cached_board_id
         try:
             url = f"{TRELLO_API_URL}boards/{board_id}"
             response = requests.get(url, params={**trello_auth})
             response.raise_for_status()
+            if response.json()['name'] != board_name:
+                board_exists = False
+            if board_exists:
+                trello_data = update_board(board_id, tree, contents, trello_auth, status)
 
-            trello_data = update_board(board_id, tree, contents, trello_auth, status)
-
-            for trello_list in trello_data.get('lists', []):
-                list_name = trello_list.get('name', 'Unnamed List')
-                list_id = create_list(board_id, list_name, trello_auth, status)
-                for card in trello_list.get('cards', []):
-                    card_name = card.get('name', 'Unnamed Card')
-                    card_desc = card.get('description', 'No description.')
-                    create_card(list_id, card_name, card_desc, trello_auth, status)
+                for trello_list in trello_data.get('lists', []):
+                    list_name = trello_list.get('name', 'Unnamed List')
+                    list_id = create_list(board_id, list_name, trello_auth, status)
+                    for card in trello_list.get('cards', []):
+                        card_name = card.get('name', 'Unnamed Card')
+                        card_desc = card.get('description', 'No description.')
+                        create_card(list_id, card_name, card_desc, trello_auth, status)
         except:
             board_exists = False
 
@@ -316,9 +323,7 @@ def main(trello_api_key, trello_token, status):
         trello_data = get_trello_json_from_gemini(tree, contents, status)
         status.write("\n--- Building Trello Board ---")
         board_id = create_board(board_name, trello_auth, status)
-        # Cache the board ID
-        with open("trello_board_cache.txt", "w") as f:
-            f.write(board_id)
+
 
         for trello_list in trello_data.get('lists', []):
             list_name = trello_list.get('name', 'Unnamed List')
@@ -333,7 +338,6 @@ def main(trello_api_key, trello_token, status):
                   state="complete", expanded=False)
     print("\n--- DEMO COMPLETE! ---")
     print("Your Trello board is ready. Go check it out!")
-
 
 if __name__ == "__main__":
     TRELLO_API_KEY = os.getenv("TRELLO_API_KEY", "")
