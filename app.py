@@ -218,8 +218,7 @@ def get_trello_json_from_gemini(code_tree, code_contents, status):
     client = Client(api_key=GEMINI_API_KEY)
 
     prompt = f"""
-    You are an intelligent code analysis assistant that helps developers manage their projects by analyzing codebases and generating actionable Trello cards. Your job is to
-    analyze a codebase, infer the development roadmap using the provided codebase (excluding trello_script.py) and automatically generate structured Trello card recommendations.
+    You are a principle engineer with a lot of experience in software engineering and project management. Your job is to analyze the codebase and generate actionable, useful Trello cards. Infer the development roadmap using the provided codebase (excluding trello_script.py). Aim for at least 5 cards, covering features, improvements, refactors, bug fixes and tests. 
 
     Based on the file tree and file contents below, generate a JSON object
     for a Trello board.
