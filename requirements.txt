@@ -25,6 +25,7 @@ narwhals==2.10.1
 numpy==2.3.4
 packaging==25.0
 pandas==2.3.3
+pathspec==0.12.1
 pillow==12.0.0
 protobuf==6.33.0
 py-dotenv==0.1
