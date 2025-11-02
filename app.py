@@ -240,7 +240,7 @@ def get_trello_json_from_gemini(code_tree, code_contents, status):
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-pro',
+            model='gemini-2.5-flash',
             contents=prompt
         )
 
