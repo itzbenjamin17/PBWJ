@@ -19,8 +19,6 @@ if not GEMINI_API_KEY:
     sys.exit(1)
 
 
-# --- 1. Trello API Functions ---
-
 
 TRELLO_API_URL = "https://api.trello.com/1/"
 
@@ -141,10 +139,8 @@ def create_card(list_id, card_name, card_desc, trello_auth, status):
     return response.json()['id']
 
 
-# --- 2. Code Scanning Function ---
 
-
-def scan_codebase(root_dir="~/Desktop/completed projects/buggyGOL", max_file_size=10000):
+def scan_codebase(root_dir=".", max_file_size=10000):
     """Scans the codebase and returns a string with the file tree and key file contents."""
     file_tree = []
     file_contents = []
@@ -190,9 +186,6 @@ def scan_codebase(root_dir="~/Desktop/completed projects/buggyGOL", max_file_siz
                     f"--- Could not read {file_path}: {e} ---\n")
 
     return "\n".join(file_tree), "\n".join(file_contents)
-
-
-# --- 3. Gemini "Magic" JSON Function ---
 
 
 def get_trello_json_from_gemini(code_tree, code_contents, status):
@@ -301,16 +294,18 @@ def main(trello_api_key, trello_token, status, github_url=None):
     tree, contents = scan_codebase(repo_destination)
     if repo_destination.startswith("github_repos"):
         subprocess.run(["rm", "-rf", repo_destination])
-    # Check if cache file exists
-    # If it does, GET that board ID instead of creating a new one (obviously with error checking)
-    # If it doen't, proceed to create a new board and save the ID to cache
-    cached_board_id = None
-    if os.path.exists("trello_board_cache.txt"):
-        with open("trello_board_cache.txt", "r") as f:
-            cached_board_id = f.read().strip()
 
-    board_exists = True
-    if cached_board_id and board_exists:
+    url = f"{TRELLO_API_URL}members/me/"
+    user_id = requests.get(url, params={**trello_auth}).json()['id']
+    url = f"{TRELLO_API_URL}members/{user_id}/boards"
+    boards = requests.get(url, params={**trello_auth}).json()
+    for board in boards:
+        if board['name'] == board_name:
+            cached_board_id = board['id']
+            board_exists = True
+            break
+
+    if board_exists:
         status.write(f"Using cached Trello board ID: {cached_board_id}")
         board_id = cached_board_id
 
