@@ -50,7 +50,7 @@ def update_board(board_id, code_tree, code_contents, trello_auth, status):
     analyze a codebase, update the development roadmap using the provided codebase (excluding this file) and automatically generate structured Trello card recommendations.
 
     Based on the file tree and file contents below, generate a JSON object
-    for a Trello board. If the description of a generated card roughly matches the description of an existing card in the board, update it if need be or rewrite the generated card as the existing matching card. Do not include any generated cards that have been resolved in the codebase. Otherwise, add new cards as needed.
+    for a Trello board. If the description of a generated card roughly matches the description of an existing card in the board, rewrite the generated card as the existing matching card. Do not include any generated cards that have been resolved in the codebase. Otherwise, add new cards as needed.
 
 
     The JSON must follow this exact schema:
@@ -296,11 +296,14 @@ def main(trello_api_key, trello_token, status, github_url=None):
         subprocess.run(["rm", "-rf", repo_destination])
 
     url = f"{TRELLO_API_URL}members/me/"
-    user_id = requests.get(url, params={**trello_auth}).json()['id']
+    user_id = requests.get(url, params={**trello_auth})
+    user_id.raise_for_status()
+    user_id = user_id.json()['id']
     url = f"{TRELLO_API_URL}members/{user_id}/boards"
-    boards = requests.get(url, params={**trello_auth}).json()
+    boards = requests.get(url, params={**trello_auth})
+    boards.raise_for_status()
     board_exists = False
-    for board in boards:
+    for board in boards.json():
         if board['name'] == board_name:
             cached_board_id = board['id']
             board_exists = True
