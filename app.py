@@ -88,7 +88,10 @@ def update_board(board_id, code_tree, code_contents, trello_auth, status):
     {data}
 
     """
-
+    for id in lists_ids:
+        url = f"{TRELLO_API_URL}lists/{id}/closed"
+        archive = requests.get(url, params={**trello_auth})
+        archive.raise_for_status()
     try:
         response = client.models.generate_content(
             model='gemini-2.5-flash',
@@ -96,6 +99,7 @@ def update_board(board_id, code_tree, code_contents, trello_auth, status):
         )
 
         # Clean the response to ensure it's valid JSON
+
         response_text = response.text if response.text else ""
         cleaned_json = response_text.strip().replace(
             "```json", "").replace("```", "").strip()
