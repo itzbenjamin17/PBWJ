@@ -9,5 +9,5 @@ submitted = form.form_submit_button("Connect")
 
 if submitted:
     status = st.status("Creating your Trello board...")
-    main(trello_api_key, trello_token, status)
+    main(trello_api_key, trello_token, status, github_url)
     st.success("Trello board created successfully!")
