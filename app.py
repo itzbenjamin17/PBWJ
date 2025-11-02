@@ -22,18 +22,18 @@ if not GEMINI_API_KEY:
 TRELLO_API_URL = "https://api.trello.com/1/"
 
 
-def create_board(board_name, trello_auth):
-    print(f"Creating Trello board: {board_name}...")
-    url = f"{TRELLO_API_URL}boards/"
+def create_board(board_name, trello_auth, status):
+    status.write(f"Creating Trello board: {board_name}...")
+    url = f"{TRELLO_API_URL}boards"
     params = {'name': board_name, 'defaultLists': 'false', **trello_auth}
     response = requests.post(url, params=params)
     response.raise_for_status()
-    print(f"✅ Board created! URL: {response.json()['shortUrl']}")
+    status.write(f"✅ Board created! URL: {response.json()['shortUrl']}")
     return response.json()['id']
 
 
-def create_list(board_id, list_name, trello_auth):
-    print(f"  Creating list: {list_name}...")
+def create_list(board_id, list_name, trello_auth, status):
+    status.write(f"  Creating list: {list_name}...")
     url = f"{TRELLO_API_URL}lists/"
     params = {'name': list_name, 'idBoard': board_id, **trello_auth}
     response = requests.post(url, params=params)
@@ -41,8 +41,8 @@ def create_list(board_id, list_name, trello_auth):
     return response.json()['id']
 
 
-def create_card(list_id, card_name, card_desc, trello_auth):
-    print(f"    Creating card: {card_name}...")
+def create_card(list_id, card_name, card_desc, trello_auth, status):
+    status.write(f"    Creating card: {card_name}...")
     url = f"{TRELLO_API_URL}cards/"
     params = {'name': card_name, 'desc': card_desc,
               'idList': list_id, **trello_auth}
@@ -105,8 +105,8 @@ def scan_codebase(root_dir="C:\\Users\\benja\\IdeaProjects\\Poker-Backend", max_
 # --- 3. Gemini "Magic" JSON Function ---
 
 
-def get_trello_json_from_gemini(code_tree, code_contents):
-    print("Asking Gemini to design the Trello board...")
+def get_trello_json_from_gemini(code_tree, code_contents, status):
+    status.write("Asking Gemini to design the Trello board...")
 
     if not GEMINI_API_KEY or GEMINI_API_KEY.startswith("PASTE_"):
         print("Error: GEMINI_API_KEY is not set or still contains placeholder.")
@@ -176,11 +176,10 @@ def get_trello_json_from_gemini(code_tree, code_contents):
     print(f"  Total tokens: {response.usage_metadata.total_token_count}")
 
 
-
 # --- 4. Main Execution ---
 
 
-def main(trello_api_key, trello_token):
+def main(trello_api_key, trello_token, status):
     trello_auth = {'key': trello_api_key, 'token': trello_token}
     board_name = "Example Board"
 
@@ -189,13 +188,14 @@ def main(trello_api_key, trello_token):
         sys.exit(1)
 
     print("--- Starting Hackathon Code-to-Trello Script ---")
+    status.update(expanded=True)
 
     # Step 1: Scan the codebase
-    print("Scanning local directory...")
+    status.write("Scanning the codebase...")
     tree, contents = scan_codebase()
 
     # Step 2: Get Trello structure from Gemini
-    trello_data = get_trello_json_from_gemini(tree, contents)
+    trello_data = get_trello_json_from_gemini(tree, contents, status)
 
     # Check if cache file exists
     # If it does, GET that board ID instead of creating a new one (obviously with error checking)
@@ -204,26 +204,30 @@ def main(trello_api_key, trello_token):
     if os.path.exists("trello_board_cache.txt"):
         with open("trello_board_cache.txt", "r") as f:
             cached_board_id = f.read().strip()
-        print(f"Using cached Trello board ID: {cached_board_id}")
 
+    if cached_board_id:
+        status.write(f"Using cached Trello board ID: {cached_board_id}")
         board_id = cached_board_id
+
     else:
         # Step 3: Build the Trello Board
-        print("\n--- Building Trello Board ---")
-        board_id = create_board(board_name, trello_auth)
+        status.write("\n--- Building Trello Board ---")
+        board_id = create_board(board_name, trello_auth, status)
         # Cache the board ID
         with open("trello_board_cache.txt", "w") as f:
             f.write(board_id)
 
     for trello_list in trello_data.get('lists', []):
         list_name = trello_list.get('name', 'Unnamed List')
-        list_id = create_list(board_id, list_name, trello_auth)
+        list_id = create_list(board_id, list_name, trello_auth, status)
 
         for card in trello_list.get('cards', []):
             card_name = card.get('name', 'Unnamed Card')
             card_desc = card.get('description', 'No description.')
-            create_card(list_id, card_name, card_desc, trello_auth)
+            create_card(list_id, card_name, card_desc, trello_auth, status)
 
+    status.update(label="Trello has been updated",
+                  state="complete", expanded=False)
     print("\n--- DEMO COMPLETE! ---")
     print("Your Trello board is ready. Go check it out!")
 
@@ -232,4 +236,4 @@ if __name__ == "__main__":
     TRELLO_API_KEY = os.getenv("TRELLO_API_KEY", "")
     TRELLO_API_TOKEN = os.getenv("TRELLO_API_TOKEN", "")
 
-    main(TRELLO_API_KEY, TRELLO_API_TOKEN)
+    main(TRELLO_API_KEY, TRELLO_API_TOKEN, status=sys.stdout)

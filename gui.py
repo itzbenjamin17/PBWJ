@@ -8,6 +8,6 @@ github_url = form.text_input("GitHub URL")
 submitted = form.form_submit_button("Connect")
 
 if submitted:
-    with st.spinner("Creating your Trello board..."):
-        main(trello_api_key, trello_token)
+    status = st.status("Creating your Trello board...")
+    main(trello_api_key, trello_token, status)
     st.success("Trello board created successfully!")
