@@ -300,6 +300,7 @@ def main(trello_api_key, trello_token, status, github_url=None):
     user_id = requests.get(url, params={**trello_auth}).json()['id']
     url = f"{TRELLO_API_URL}members/{user_id}/boards"
     boards = requests.get(url, params={**trello_auth}).json()
+    board_exists = False
     for board in boards:
         if board['name'] == board_name:
             cached_board_id = board['id']
