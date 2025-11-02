@@ -290,21 +290,29 @@ def main(trello_api_key, trello_token, status):
         with open("trello_board_cache.txt", "r") as f:
             cached_board_id = f.read().strip()
 
-    if cached_board_id:
+    board_exists = True
+    if cached_board_id and board_exists:
         status.write(f"Using cached Trello board ID: {cached_board_id}")
         board_id = cached_board_id
-        
-        trello_data = update_board(board_id, tree, contents, trello_auth, status)
+        try:
+            url = f"{TRELLO_API_URL}boards/{board_id}"
+            response = requests.get(url, params={**trello_auth})
+            response.raise_for_status()
 
-        for trello_list in trello_data.get('lists', []):
-            list_name = trello_list.get('name', 'Unnamed List')
-            list_id = create_list(board_id, list_name, trello_auth, status)
-            for card in trello_list.get('cards', []):
-                card_name = card.get('name', 'Unnamed Card')
-                card_desc = card.get('description', 'No description.')
-                create_card(list_id, card_name, card_desc, trello_auth, status)
+            trello_data = update_board(board_id, tree, contents, trello_auth, status)
 
-    else:
+            for trello_list in trello_data.get('lists', []):
+                list_name = trello_list.get('name', 'Unnamed List')
+                list_id = create_list(board_id, list_name, trello_auth, status)
+                for card in trello_list.get('cards', []):
+                    card_name = card.get('name', 'Unnamed Card')
+                    card_desc = card.get('description', 'No description.')
+                    create_card(list_id, card_name, card_desc, trello_auth, status)
+        except:
+            board_exists = False
+
+
+    if not board_exists:
         trello_data = get_trello_json_from_gemini(tree, contents, status)
         status.write("\n--- Building Trello Board ---")
         board_id = create_board(board_name, trello_auth, status)
@@ -312,14 +320,14 @@ def main(trello_api_key, trello_token, status):
         with open("trello_board_cache.txt", "w") as f:
             f.write(board_id)
 
-    for trello_list in trello_data.get('lists', []):
-        list_name = trello_list.get('name', 'Unnamed List')
-        list_id = create_list(board_id, list_name, trello_auth, status)
+        for trello_list in trello_data.get('lists', []):
+            list_name = trello_list.get('name', 'Unnamed List')
+            list_id = create_list(board_id, list_name, trello_auth, status)
 
-        for card in trello_list.get('cards', []):
-            card_name = card.get('name', 'Unnamed Card')
-            card_desc = card.get('description', 'No description.')
-            create_card(list_id, card_name, card_desc, trello_auth, status)
+            for card in trello_list.get('cards', []):
+                card_name = card.get('name', 'Unnamed Card')
+                card_desc = card.get('description', 'No description.')
+                create_card(list_id, card_name, card_desc, trello_auth, status)
     
     status.update(label="Trello has been updated",
                   state="complete", expanded=False)
