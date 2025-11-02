@@ -38,7 +38,10 @@ def update_board(board_id, code_tree, code_contents, trello_auth, status):
         cards.raise_for_status()
         for card in cards.json():
             data[card['id']] = card['desc']
-
+    for id in lists_ids:
+        url = f"{TRELLO_API_URL}lists/{id}/closed"
+        archive = requests.put(url, params={**trello_auth})
+        archive.raise_for_status()
     status.write("Asking Gemini to update the Trello board...")
     if not GEMINI_API_KEY or GEMINI_API_KEY.startswith("PASTE_"):
         print("Error: GEMINI_API_KEY is not set or still contains placeholder.")
@@ -88,10 +91,7 @@ def update_board(board_id, code_tree, code_contents, trello_auth, status):
     {data}
 
     """
-    for id in lists_ids:
-        url = f"{TRELLO_API_URL}lists/{id}/closed"
-        archive = requests.get(url, params={**trello_auth})
-        archive.raise_for_status()
+
     try:
         response = client.models.generate_content(
             model='gemini-2.5-flash',
