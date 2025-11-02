@@ -1,4 +1,5 @@
 import os
+import streamlit as st
 import requests
 import json
 import sys
@@ -17,7 +18,6 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 if not GEMINI_API_KEY:
     print("Error: GEMINI_API_KEY is not set.")
     sys.exit(1)
-
 
 
 TRELLO_API_URL = "https://api.trello.com/1/"
@@ -139,7 +139,6 @@ def create_card(list_id, card_name, card_desc, trello_auth, status):
     response = requests.post(url, params=params)
     response.raise_for_status()
     return response.json()['id']
-
 
 
 def scan_codebase(root_dir=".", max_file_size=10000):
@@ -316,7 +315,8 @@ def main(trello_api_key, trello_token, status, github_url=None):
             if response.json()['name'] != board_name:
                 board_exists = False
             if board_exists:
-                trello_data = update_board(board_id, tree, contents, trello_auth, status)
+                trello_data = update_board(
+                    board_id, tree, contents, trello_auth, status)
 
             for trello_list in trello_data.get('lists', []):
                 list_name = trello_list.get('name', 'Unnamed List')
@@ -324,17 +324,16 @@ def main(trello_api_key, trello_token, status, github_url=None):
                 for card in trello_list.get('cards', []):
                     card_name = card.get('name', 'Unnamed Card')
                     card_desc = card.get('description', 'No description.')
-                    create_card(list_id, card_name, card_desc, trello_auth, status)
+                    create_card(list_id, card_name, card_desc,
+                                trello_auth, status)
             status.update(label="Trello has been updated")
         except:
             board_exists = False
-
 
     if not board_exists:
         trello_data = get_trello_json_from_gemini(tree, contents, status)
         status.write("\n--- Building Trello Board ---")
         board_id = create_board(board_name, trello_auth, status)
-
 
         for trello_list in trello_data.get('lists', []):
             list_name = trello_list.get('name', 'Unnamed List')
@@ -349,8 +348,9 @@ def main(trello_api_key, trello_token, status, github_url=None):
     print("\n--- DEMO COMPLETE! ---")
     print("Your Trello board is ready. Go check it out!")
 
+
 if __name__ == "__main__":
     TRELLO_API_KEY = os.getenv("TRELLO_API_KEY", "")
     TRELLO_API_TOKEN = os.getenv("TRELLO_API_TOKEN", "")
 
-    main(TRELLO_API_KEY, TRELLO_API_TOKEN, status=sys.stdout)
+    main(TRELLO_API_KEY, TRELLO_API_TOKEN, status=st.status("Starting..."))
