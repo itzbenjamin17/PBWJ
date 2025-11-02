@@ -339,18 +339,32 @@ def main(trello_api_key, trello_token, status, github_url=None):
             list_name = trello_list.get('name', 'Unnamed List')
             list_id = create_list(board_id, list_name, trello_auth, status)
 
-        for card in trello_list.get('cards', []):
-            card_name = card.get('name', 'Unnamed Card')
-            card_desc = card.get('description', 'No description.')
-            create_card(list_id, card_name, card_desc, trello_auth, status)
+            for card in trello_list.get('cards', []):
+                card_name = card.get('name', 'Unnamed Card')
+                card_desc = card.get('description', 'No description.')
+                create_card(list_id, card_name, card_desc, trello_auth, status)
 
     status.update(state="complete", expanded=False)
     print("\n--- DEMO COMPLETE! ---")
     print("Your Trello board is ready. Go check it out!")
 
 
+class MockStatus:
+    """Mock status object for CLI usage (when not running through Streamlit)"""
+    def write(self, message):
+        print(f"  {message}")
+    
+    def update(self, label=None, state=None, expanded=None):
+        if label:
+            print(f"Status: {label}")
+        if state:
+            print(f"State: {state}")
+
+
 if __name__ == "__main__":
     TRELLO_API_KEY = os.getenv("TRELLO_API_KEY", "")
     TRELLO_API_TOKEN = os.getenv("TRELLO_API_TOKEN", "")
-
-    main(TRELLO_API_KEY, TRELLO_API_TOKEN, status=st.status("Starting..."))
+    status = MockStatus()  # Use mock status for CLI
+    repo_url = os.getenv("REPO_URL", "")
+    if repo_url:
+        main(TRELLO_API_KEY, TRELLO_API_TOKEN, status=status, github_url=repo_url)
