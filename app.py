@@ -308,8 +308,6 @@ def main(trello_api_key, trello_token, status, github_url=None):
     if board_exists:
         status.write(f"Using cached Trello board ID: {cached_board_id}")
         board_id = cached_board_id
-
-        trello_data = update_board(board_id, tree, contents, trello_auth, status)
         try:
             url = f"{TRELLO_API_URL}boards/{board_id}"
             response = requests.get(url, params={**trello_auth})
