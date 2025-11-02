@@ -5,6 +5,8 @@ import json
 import sys
 import subprocess
 import uuid
+import pathspec
+from pathlib import Path
 from google.genai import Client
 from dotenv import load_dotenv
 
@@ -21,6 +23,23 @@ if not GEMINI_API_KEY:
 
 
 TRELLO_API_URL = "https://api.trello.com/1/"
+
+def update_board_github(github_url):
+    board_name = github_url.split('/')[-1]
+    if board_name.endswith('.git'):
+        board_name = board_name[:-4]
+
+    status.write("Cloning the repository")
+    # unique repo id
+    urid = str(uuid.uuid4())
+    repo_destination = os.path.join("github_repos", urid)
+    subprocess.run(["mkdir", "-p", repo_destination])
+    subprocess.run(["git", "clone", github_url, repo_destination])
+    tree, contents = scan_codebase(repo_destination)
+    if repo_destination.startswith("github_repos"):
+        subprocess.run(["rm", "-rf", repo_destination])
+
+
 
 
 def update_board(board_id, code_tree, code_contents, trello_auth, status):
@@ -147,19 +166,68 @@ def create_card(list_id, card_name, card_desc, trello_auth, status):
     response.raise_for_status()
     return response.json()['id']
 
+import os
+import pathspec
+from pathlib import Path
 
 def scan_codebase(root_dir=".", max_file_size=10000):
     """Scans the codebase and returns a string with the file tree and key file contents."""
     file_tree = []
     file_contents = []
-    # Add files/dirs to ignore
-    ignore_dirs = {'.git', '.vscode', '__pycache__',
-                   'node_modules', '.github', "venv", "Old Game Logic", "target", "public"}
-    ignore_files = {'package-lock.json', '.env'}
+
+    # Load .obignore patterns
+    obignore_path = Path(root_dir) / ".obignore"
+    default_patterns = [
+        'node_modules/',
+        '.git/',
+        '.vscode/',
+        '__pycache__/',
+        'venv/',
+        '.venv/',
+        '.github/',
+        '.env',
+        '*.pyc',
+        'dist/',
+        'build/',
+        '*.min.js',
+        'package-lock.json',
+        'yarn.lock',
+    ]
+
+    patterns = default_patterns.copy()
+
+    if obignore_path.exists():
+        with open(obignore_path, 'r') as f:
+            # Filter out empty lines and comments
+            user_patterns = [
+                line.strip()
+                for line in f.read().splitlines()
+                if line.strip() and not line.strip().startswith('#')
+            ]
+            patterns.extend(user_patterns)
+
+    # Create PathSpec object
+    spec = pathspec.PathSpec.from_lines('gitwildmatch', patterns)
 
     for root, dirs, files in os.walk(root_dir):
+        # Calculate relative path for the current directory
+        if root == root_dir:
+            rel_root = ""
+        else:
+            rel_root = os.path.relpath(root, root_dir)
+
         # Filter out ignored directories
-        dirs[:] = [d for d in dirs if d not in ignore_dirs]
+        filtered_dirs = []
+        for d in dirs:
+            if rel_root:
+                dir_rel_path = os.path.join(rel_root, d) + '/'
+            else:
+                dir_rel_path = d + '/'
+
+            if not spec.match_file(dir_rel_path):
+                filtered_dirs.append(d)
+
+        dirs[:] = filtered_dirs
 
         rel_path = os.path.relpath(root, root_dir)
         if rel_path == ".":
@@ -173,25 +241,33 @@ def scan_codebase(root_dir=".", max_file_size=10000):
             file_tree.append(f"{indent}📁 {os.path.basename(root)}/")
 
         for f in files:
-            if f in ignore_files:
+            # Calculate relative file path
+            if rel_root:
+                relative_file_path = os.path.join(rel_root, f)
+            else:
+                relative_file_path = f
+
+            # Skip if file matches obignore patterns
+            if spec.match_file(relative_file_path):
+                print("Ignoring: ", relative_file_path)
                 continue
 
             file_tree.append(f"{indent}  📄 {f}")
 
             try:
-                file_path = os.path.join(root, f)
-                if os.path.getsize(file_path) > max_file_size:
+                full_path = os.path.join(root, f)
+                if os.path.getsize(full_path) > max_file_size:
                     file_contents.append(
-                        f"--- Content of {file_path} (truncated) ---\nFile is too large, skipping content.\n")
+                        f"--- Content of {relative_file_path} (truncated) ---\nFile is too large, skipping content.\n")
                     continue
 
-                with open(file_path, 'r', encoding='utf-8') as file:
+                with open(full_path, 'r', encoding='utf-8') as file:
                     content = file.read()
                     file_contents.append(
-                        f"--- Content of {file_path} ---\n{content}\n")
+                        f"--- Content of {relative_file_path} ---\n{content}\n")
             except Exception as e:
                 file_contents.append(
-                    f"--- Could not read {file_path}: {e} ---\n")
+                    f"--- Could not read {relative_file_path}: {e} ---\n")
 
     return "\n".join(file_tree), "\n".join(file_contents)
 
@@ -207,7 +283,7 @@ def get_trello_json_from_gemini(code_tree, code_contents, status):
     client = Client(api_key=GEMINI_API_KEY)
 
     prompt = f"""
-    You are a principle engineer with a lot of experience in software engineering and project management. Your job is to analyze the codebase and generate actionable, useful Trello cards. Infer the development roadmap using the provided codebase (excluding trello_script.py). Aim for at least 5 cards, covering features, improvements, refactors, bug fixes and tests. 
+    You are a principle engineer with a lot of experience in software engineering and project management. Your job is to analyze the codebase and generate actionable, useful Trello cards. Infer the development roadmap using the provided codebase (excluding trello_script.py). Aim for at least 5 cards, covering features, improvements, refactors, bug fixes and tests.
 
     Based on the file tree and file contents below, generate a JSON object
     for a Trello board.
@@ -279,6 +355,8 @@ def main(trello_api_key, trello_token, status, github_url=None):
     else:
         board_name = os.getcwd().split(os.sep)[-1]
 
+    print("Board name: ", board_name)
+
     if not GEMINI_API_KEY:
         print("Error: Please set all API keys in your .env file.")
         sys.exit(1)
@@ -299,7 +377,7 @@ def main(trello_api_key, trello_token, status, github_url=None):
     # Step 1: Scan the codebase
     status.write("Scanning the codebase...")
     tree, contents = scan_codebase(repo_destination)
-    if repo_destination.startswith("github_repos"):
+    if "github_repos" in repo_destination:
         subprocess.run(["rm", "-rf", repo_destination])
 
     url = f"{TRELLO_API_URL}members/me/"
@@ -361,7 +439,7 @@ class MockStatus:
     """Mock status object for CLI usage (when not running through Streamlit)"""
     def write(self, message):
         print(f"  {message}")
-    
+
     def update(self, label=None, state=None, expanded=None):
         if label:
             print(f"Status: {label}")
