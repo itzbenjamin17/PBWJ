@@ -23,6 +23,7 @@ if not GEMINI_API_KEY:
 TRELLO_API_URL = "https://api.trello.com/1/"
 
 def update_board(board_id, code_tree, code_contents, trello_auth, status):
+    print("update branch")
     url = f"{TRELLO_API_URL}boards/{board_id}/lists"
     trello_lists = requests.get(url, params={**trello_auth})
     trello_lists.raise_for_status()
@@ -306,7 +307,6 @@ def main(trello_api_key, trello_token, status, github_url=None):
             break
 
     if board_exists:
-        status.write(f"Using cached Trello board ID: {cached_board_id}")
         board_id = cached_board_id
         try:
             url = f"{TRELLO_API_URL}boards/{board_id}"
