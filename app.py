@@ -293,6 +293,7 @@ def main(trello_api_key, trello_token, status):
     if cached_board_id:
         status.write(f"Using cached Trello board ID: {cached_board_id}")
         board_id = cached_board_id
+        
         trello_data = update_board(board_id, tree, contents, trello_auth, status)
 
         for trello_list in trello_data.get('lists', []):
