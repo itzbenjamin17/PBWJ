@@ -16,10 +16,97 @@ if not GEMINI_API_KEY:
     print("Error: GEMINI_API_KEY is not set.")
     sys.exit(1)
 
+
 # --- 1. Trello API Functions ---
 
 
 TRELLO_API_URL = "https://api.trello.com/1/"
+
+def update_board(board_id, code_tree, code_contents, trello_auth, status):
+    url = f"{TRELLO_API_URL}boards/{board_id}/lists"
+    trello_lists = requests.get(url, params={**trello_auth})
+    trello_lists.raise_for_status()
+    status.write("Fetching existing Trello board data...")
+
+    lists_ids = [lst['id'] for lst in trello_lists.json()]
+    data = {}
+    for id in lists_ids:
+        url = f"{TRELLO_API_URL}lists/{id}/cards"
+        cards = requests.get(url, params={**trello_auth})
+        cards.raise_for_status()
+        for card in cards.json():
+            data[card['id']] = card['desc']
+    
+    status.write("Asking Gemini to update the Trello board...")
+    if not GEMINI_API_KEY or GEMINI_API_KEY.startswith("PASTE_"):
+        print("Error: GEMINI_API_KEY is not set or still contains placeholder.")
+        sys.exit(1)
+
+    client = Client(api_key=GEMINI_API_KEY)
+    prompt = f"""
+    You are an intelligent code analysis assistant that helps developers manage their projects by analyzing codebases and generating actionable Trello cards. Your job is to
+    analyze a codebase, update the development roadmap using the provided codebase (excluding trello_script.py) and automatically generate structured Trello card recommendations.
+    
+    Based on the file tree and file contents below, generate a JSON object
+    for a Trello board. If the description of a card roughly matches the description of an existing card in the board, update if need be or skip it. Delete any cards that have been resolved in the codebase. Otherwise, add new cards as needed.
+
+
+    The JSON must follow this exact schema:
+    {{
+      "boardName": "Board Name",
+      "lists": [
+        {{
+          "name": "List Name (e.g., 'main.py', 'helper.py', 'extra.py')",
+          "cards": [
+            {{ 
+              "name": "Name for improvement or feature", 
+              "description": "One-sentence summary of the proposed improvement or feature."
+            }}
+          ]
+        }}
+      ]
+    }}
+
+
+    Rules:
+    1.  The "description" for each card should be a concise summary.
+    2.  Label suggestions should be in categories like "Bugs", "Features", "Refactor", "Testing".
+    3.  Return *ONLY* the raw JSON object and nothing else. Do not wrap it in ``````.
+
+    
+    --- FILE TREE ---
+    {code_tree}
+
+
+    --- FILE CONTENTS ---
+    {code_contents}
+    
+
+    --- EXISTING CARDS ---
+    {data}
+
+    """
+
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+
+        # Clean the response to ensure it's valid JSON
+        response_text = response.text if response.text else ""
+        cleaned_json = response_text.strip().replace(
+            "```json", "").replace("```", "").strip()
+        return json.loads(cleaned_json)
+    except Exception as e:
+        print(f"Error parsing Gemini response: {e}")
+        if 'response' in locals() and hasattr(response, 'text'):
+            print(f"Raw response: {response.text}")
+        sys.exit(1)
+    print(f"  Prompt tokens: {response.usage_metadata.prompt_token_count}")
+    print(
+        f"  Response tokens: {response.usage_metadata.candidates_token_count}")
+    print(f"  Total tokens: {response.usage_metadata.total_token_count}")
 
 
 def create_board(board_name, trello_auth, status):
@@ -54,7 +141,7 @@ def create_card(list_id, card_name, card_desc, trello_auth, status):
 # --- 2. Code Scanning Function ---
 
 
-def scan_codebase(root_dir="C:\\Users\\benja\\IdeaProjects\\Poker-Backend", max_file_size=10000):
+def scan_codebase(root_dir=".", max_file_size=10000):
     """Scans the codebase and returns a string with the file tree and key file contents."""
     file_tree = []
     file_contents = []
@@ -111,7 +198,7 @@ def get_trello_json_from_gemini(code_tree, code_contents, status):
     if not GEMINI_API_KEY or GEMINI_API_KEY.startswith("PASTE_"):
         print("Error: GEMINI_API_KEY is not set or still contains placeholder.")
         sys.exit(1)
-
+    
     # Initialize the new Google Gen AI client
     client = Client(api_key=GEMINI_API_KEY)
 
@@ -181,7 +268,7 @@ def get_trello_json_from_gemini(code_tree, code_contents, status):
 
 def main(trello_api_key, trello_token, status):
     trello_auth = {'key': trello_api_key, 'token': trello_token}
-    board_name = "Example Board"
+    board_name = os.getcwd().split(os.sep)[-1]
 
     if not GEMINI_API_KEY:
         print("Error: Please set all API keys in your .env file.")
@@ -192,15 +279,13 @@ def main(trello_api_key, trello_token, status):
 
     # Step 1: Scan the codebase
     status.write("Scanning the codebase...")
+    print("Scanning local directory...")
     tree, contents = scan_codebase()
-
-    # Step 2: Get Trello structure from Gemini
-    trello_data = get_trello_json_from_gemini(tree, contents, status)
 
     # Check if cache file exists
     # If it does, GET that board ID instead of creating a new one (obviously with error checking)
     # If it doen't, proceed to create a new board and save the ID to cache
-
+    cached_board_id = None
     if os.path.exists("trello_board_cache.txt"):
         with open("trello_board_cache.txt", "r") as f:
             cached_board_id = f.read().strip()
@@ -208,9 +293,18 @@ def main(trello_api_key, trello_token, status):
     if cached_board_id:
         status.write(f"Using cached Trello board ID: {cached_board_id}")
         board_id = cached_board_id
+        trello_data = update_board(board_id, tree, contents, trello_auth, status)
+
+        for trello_list in trello_data.get('lists', []):
+            list_name = trello_list.get('name', 'Unnamed List')
+            list_id = create_list(board_id, list_name, trello_auth, status)
+            for card in trello_list.get('cards', []):
+                card_name = card.get('name', 'Unnamed Card')
+                card_desc = card.get('description', 'No description.')
+                create_card(list_id, card_name, card_desc, trello_auth, status)
 
     else:
-        # Step 3: Build the Trello Board
+        trello_data = get_trello_json_from_gemini(tree, contents, status)
         status.write("\n--- Building Trello Board ---")
         board_id = create_board(board_name, trello_auth, status)
         # Cache the board ID
@@ -225,7 +319,7 @@ def main(trello_api_key, trello_token, status):
             card_name = card.get('name', 'Unnamed Card')
             card_desc = card.get('description', 'No description.')
             create_card(list_id, card_name, card_desc, trello_auth, status)
-
+    
     status.update(label="Trello has been updated",
                   state="complete", expanded=False)
     print("\n--- DEMO COMPLETE! ---")
