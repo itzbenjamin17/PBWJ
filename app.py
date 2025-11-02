@@ -142,7 +142,7 @@ def create_card(list_id, card_name, card_desc, trello_auth, status):
 
 
 
-def scan_codebase(root_dir="C:\\Users\\benja\\Documents\\CS Projects\\MiniMax-TicTacToe", max_file_size=10000):
+def scan_codebase(root_dir=".", max_file_size=10000):
     """Scans the codebase and returns a string with the file tree and key file contents."""
     file_tree = []
     file_contents = []
